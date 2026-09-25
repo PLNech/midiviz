@@ -1,0 +1,31 @@
+[project]
+name = "midiviz"
+version = "1.0.0"
+description = "Live MIDI as a picture, not a transcript — a lens over your MIDI control surface"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Paul-Louis NECH" }]
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.5",
+]
+keywords = ["midi", "visualization", "alsa", "launch-control-xl", "livecoding"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: MIDI",
+]
+
+[project.urls]
+Homepage = "https://git.nech.pl/pln/midiviz"
+GitHub = "https://github.com/PLNech/midiviz"
+
+# The app is a single-module, sibling-import design (midiviz.py imports
+# midimon/midistream/lcxl_grid as top-level names), so it is not installed as
+# a library — run it from the checkout: `python3 midiviz.py`.
+[tool.pytest.ini_options]
+testpaths = ["tests"]

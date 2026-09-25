@@ -1,0 +1,35 @@
+[Unit]
+Description=midiviz (MIDI lens: the control surface, watched)
+# GUI unit: it must start only once the compositor's env (WAYLAND_DISPLAY,
+# XDG_RUNTIME_DIR) has been imported into the user manager, which is what
+# graphical-session.target marks. Bound to default.target instead, it would
+# race the session and fail with "could not connect to display".
+After=graphical-session.target
+PartOf=graphical-session.target
+# StartLimitIntervalSec=0 belongs in [Unit], not [Service] -- systemd silently
+# ignores it in the wrong section. 0 = no rate-limit window can ever
+# accumulate a start count and refuse to restart; paired with Restart=always.
+StartLimitIntervalSec=0
+
+[Service]
+Environment=PYTHONUNBUFFERED=1
+# Point this at YOUR checkout. No --spectro here on purpose: the spectrum
+# backdrop is an AUDIO consumer (a tap on the master bus), and this unit is
+# Restart=always -- putting the flag here would make the tap permanent at
+# login. It is a runtime choice: `s` in the window, or a hand-launched
+# --spectro.
+ExecStart=/usr/bin/python3 %h/where/you/cloned/midiviz/midiviz.py
+Restart=always
+# ...EXCEPT when the human closed it. Restart=always cannot distinguish "the
+# aseqdump pipe hit EOF" from "the user clicked the X", and treating the
+# second as the first makes the lens feel welded on: the window goes away and
+# comes back five seconds later. midiviz.py exits USER_CLOSE_EXIT=78 for a
+# deliberate close only (the X, Q, Esc), so this keeps the restart for every
+# failure mode while letting a person actually close the thing.
+# SuccessExitStatus keeps the deliberate close from showing the unit red.
+SuccessExitStatus=78
+RestartPreventExitStatus=78
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

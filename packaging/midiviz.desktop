@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=midiviz
+GenericName=MIDI lens
+Comment=Live MIDI as glyph-rain — your control surface, watched
+Exec=/usr/bin/python3 /PATH/TO/YOUR/CHECKOUT/midiviz.py
+Icon=audio-midi
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupWMClass=midiviz
+NoDisplay=false
