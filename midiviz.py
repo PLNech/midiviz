@@ -2821,7 +2821,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                 grp.addAction(a)
                 m.addAction(a)
                 self._theme_acts[name] = a
-            self._act_cycle = QtGui.QAction("Next page\td", self)
+            self._act_cycle = QtGui.QAction("Next theme\td", self)
             self._act_cycle.triggered.connect(lambda _c=False: self.cycle_theme())
             m.addAction(self._act_cycle)
 
@@ -2864,7 +2864,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             self._act_spec.setCheckable(True)
             self._act_spec.triggered.connect(lambda _c=False: self.toggle_spectro())
             m.addAction(self._act_spec)
-            self._act_hl = QtGui.QAction("Tidal HL feed\th", self)
+            self._act_hl = QtGui.QAction("Tidal orbit feed\th", self)
             self._act_hl.setCheckable(True)
             self._act_hl.triggered.connect(lambda _c=False: self.toggle_hl())
             m.addAction(self._act_hl)
@@ -3654,7 +3654,7 @@ def main(argv=None) -> int:
                     help="initial scale, 0.6-2.4 (also +/- at runtime; "
                          "remembered between runs)")
     ap.add_argument("--theme", choices=sorted(THEMES), default=None,
-                    help="palette: dark (the cockpit), light (pale desktop), "
+                    help="theme: dark (the cockpit), light (pale desktop), "
                          "sun (maximum contrast, for playing outdoors); "
                          "'d' cycles at runtime and the choice is remembered")
     ap.add_argument("--no-tray", action="store_true",
@@ -3665,7 +3665,7 @@ def main(argv=None) -> int:
     ap.add_argument("--spectro-target",
                     help="capture this node instead of the default sink")
     ap.add_argument("--no-hl", action="store_true",
-                    help="do not subscribe to the Tidal HL feed (SuperDirt "
+                    help="do not subscribe to the Tidal orbit feed (SuperDirt "
                          "mirror on port %d; 'h' toggles it at runtime)"
                          % oscfeed.VIZ_PORT)
     ap.add_argument("--selftest", action="store_true",
@@ -3701,7 +3701,7 @@ def main(argv=None) -> int:
         try:
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            print("midiviz: already running — refusing to duplicate "
+            print("midiviz: already running, refusing to duplicate "
                   "(focus the existing window)", file=sys.stderr)
             try:
                 import launchers
@@ -3731,7 +3731,7 @@ def main(argv=None) -> int:
     # The theme joins it for the same reason: a `--theme` that lost to a saved
     # one, or a saved one that lost to a corrupt file, is otherwise a silent
     # surprise, and the window has no words to explain itself with.
-    print("⚓ midiviz — %s · theme %s · %.2f× · q/Esc/Ctrl-C to quit · right-click for the menu"
+    print("⚓ midiviz · %s · theme %s · %.2f× · q/Esc/Ctrl-C to quit · right-click for the menu"
           % (label or "port %s" % port, theme, scale), file=sys.stderr)
     # A blind `aseqdump` (no -p) subscribes to NOTHING -- see the
     # WATCH_PREFERENCE comment above -- so start a Reader only once a real
