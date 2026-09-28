@@ -1181,3 +1181,19 @@ def test_only_devcon_wears_the_hero_and_its_faders_walk_the_gradient():
         assert len(lut) == mv.LEVELS
     w.set_theme("dark", save=False)
     assert w.fader_lut == [], "a theme switch must drop the gradient faders"
+
+
+def test_pw_record_gets_raw_only_when_it_knows_the_flag(monkeypatch):
+    """pw-record 1.0.x exits on `--raw`; newer ones need it. Ask, don't assume."""
+    import subprocess
+    import types
+    for helptext, want in (("  --target  x\n", []), ("  --raw  y\n", ["--raw"])):
+        monkeypatch.setattr(V, "_PW_RAW", None)
+        monkeypatch.setattr(subprocess, "run", lambda *a, _h=helptext, **k:
+                            types.SimpleNamespace(stdout="", stderr=_h))
+        assert V.pw_record_raw_flag() == want
+    monkeypatch.setattr(V, "_PW_RAW", None)
+    def boom(*a, **k):
+        raise OSError("no pw-record")
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert V.pw_record_raw_flag() == []

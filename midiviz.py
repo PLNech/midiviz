@@ -1074,6 +1074,27 @@ def _read_exact(stream, n: int) -> "bytes | None":
     return b"".join(chunks) if len(chunks) > 1 else chunks[0]
 
 
+_PW_RAW: "bool | None" = None
+
+
+def pw_record_raw_flag() -> list[str]:
+    """`["--raw"]` when this pw-record knows the flag, else `[]`.
+
+    Newer PipeWire wants `--raw` to write bare samples to stdout; 1.0.x (the
+    XPS24's 1.0.5) rejects it as an unrecognized option and exits at once --
+    which is how the spectrograph read 0 blocks and "eof" on the rig for its
+    whole life. 1.0.x writes raw to `-` anyway. Asked once per process."""
+    global _PW_RAW
+    if _PW_RAW is None:
+        try:
+            out = subprocess.run(["pw-record", "--help"], capture_output=True,
+                                 text=True, timeout=3)
+            _PW_RAW = "--raw" in (out.stdout or "") + (out.stderr or "")
+        except (OSError, subprocess.SubprocessError):
+            _PW_RAW = False
+    return ["--raw"] if _PW_RAW else []
+
+
 def spec_default_target() -> str | None:
     """The default sink's node name, or None if PulseAudio/PipeWire is absent."""
     try:
@@ -1157,7 +1178,7 @@ class SpectrumSource:
     def _cmd(self, target: str) -> list[str]:
         return ["pw-record", "--target", target, "--rate", str(self.rate),
                 "--channels", "1", "--format", "f32", "--latency", "100ms",
-                "--raw", "-"]
+                *pw_record_raw_flag(), "-"]
 
     def start(self) -> "SpectrumSource":
         if self._th is None:
