@@ -377,6 +377,15 @@ class Theme(NamedTuple):
     # The face every digit and label is set in: "mono" (the cockpit's
     # monospace stack) or "jersey" (the vendored pixel face, see JERSEY_PATH).
     ui_font: str
+    # The eight family hues, in FAM_* order. Every theme but devcon keeps the
+    # ParVagues violet arc (FAM_HUE); a family still MEANS the same role
+    # whatever hue it wears, so a theme may re-dress it but never reorder it.
+    fam_hue: tuple[float, ...]
+    # How a cell body is made. False: `tint` is an HSV ramp, as always. True:
+    # the family's vivid colour laid OVER the page, `tint`'s value read as how
+    # much of it -- a warm hue darkened toward black is brown, the same hue
+    # thinned over navy stays itself (how the DevCon site layers its colour).
+    tint_over_page: bool
 
 
 # The dark ink ramp, sampled at levels 1..4, IS the dark surface ramp -- which
@@ -395,6 +404,7 @@ THEMES: dict[str, Theme] = {
         spec_peak=(0xc8, 0xa8, 0xff, 90),
         scan=((0xa0, 0x60, 0xff, 16), (0xa0, 0x60, 0xff, 9)),
         bar_frac=0.22, bold=False, ui_font="mono",
+        fam_hue=FAM_HUE, tint_over_page=False,
     ),
     # Indoors on a pale desktop. Still a lens, still the violet arc, still a
     # decay gradient the eye can follow -- the ink simply runs the other way.
@@ -414,6 +424,7 @@ THEMES: dict[str, Theme] = {
         spec_peak=(0x4a, 0x2a, 0x78, 110),
         scan=((0x50, 0x3a, 0x78, 10), (0x50, 0x3a, 0x78, 6)),
         bar_frac=0.22, bold=False, ui_font="mono",
+        fam_hue=FAM_HUE, tint_over_page=False,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -429,8 +440,12 @@ THEMES: dict[str, Theme] = {
     # wrapped, see _build_palette. Family hues stay the orbit identity.
     "devcon": Theme(
         name="devcon", bg=(0x0d, 0x18, 0x33),
-        ink=Ramp(0.10, 0.88, 1.25, 0.92, -0.40, 1.60),
-        tint=Ramp(0.16, 0.55, 1.00, 0.30, 0.45, 1.00),
+        # Vivid, not grey (PLN, 2026-09-28: "a bit grey, make this pop"): the
+        # ink keeps its saturation to the top instead of paling out, and the
+        # cell bodies carry the hue at every heat step. The grey was low
+        # saturation at low value -- a family hue at s=0.30 on navy is mud.
+        ink=Ramp(0.14, 0.86, 1.10, 1.00, -0.22, 2.00),
+        tint=Ramp(0.10, 0.42, 1.00, 0.85, 0.00, 1.00),   # page->hue mix, see tint_over_page
         tint_t=_TINT_T_LINEAR,
         chrome=Ramp(0.70, -0.40, 0.80, 0.25, 0.30, 1.00),
         chrome_hue=216.0,      # #457aff, the site's electric blue
@@ -440,6 +455,13 @@ THEMES: dict[str, Theme] = {
         # The site sets everything that is not body copy in Jersey 15, so
         # every digit here is too.
         bar_frac=0.34, bold=True, ui_font="jersey",
+        # The families in the event's colours (PLN, 2026-09-28: "DevCon
+        # palette"), from the site's CSS and the artwork's measured mass:
+        # level = electric blue #457aff, fx = corail #fd956e, fx2 = magenta
+        # #df96ef, gate = mint #07ffda, gate2 = cyan #46dbee, family = orange
+        # #ff7700, other = the chrome's blue, note = the artwork's rose.
+        fam_hue=(223, 16, 290, 171, 191, 28, 216, 350),
+        tint_over_page=True,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -466,6 +488,7 @@ THEMES: dict[str, Theme] = {
         spec_peak=(0x18, 0x0c, 0x38, 190),
         scan=None,
         bar_frac=0.34, bold=True, ui_font="mono",
+        fam_hue=FAM_HUE, tint_over_page=False,
     ),
 }
 # Cycle order for the `d` key and the menu: darkest to brightest page, so the
@@ -1417,7 +1440,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             # LUT[family][level] — every INK colour this window can ever paint,
             # so a frame constructs no QColor at all.
             self.lut = []
-            for hue in FAM_HUE:
+            for hue in th.fam_hue:
                 col = []
                 for lv in range(LEVELS):
                     val, sat = th.ink.at(lv / (LEVELS - 1))
@@ -1430,11 +1453,17 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             # separate, shallower ramp, because a panel must stay near the page
             # while the ink on it walks away from it.
             self.tint = []
-            for hue in FAM_HUE:
+            for hue in th.fam_hue:
                 row = []
                 for t in th.tint_t:
                     val, sat = th.tint.at(t)
-                    row.append(QtGui.QColor.fromHsvF(hue / 360.0, sat, val))
+                    if th.tint_over_page:
+                        c = QtGui.QColor.fromHsvF(hue / 360.0, sat, 1.0)
+                        row.append(QtGui.QColor(
+                            *(round(b + (f - b) * val) for b, f in
+                              zip(th.bg, (c.red(), c.green(), c.blue())))))
+                    else:
+                        row.append(QtGui.QColor.fromHsvF(hue / 360.0, sat, val))
                 self.tint.append(row)
             # Chrome (border, row letters, CC reference digits, the two header
             # controls) is the FAM_OTHER ink ramp on dark — one fewer ramp to
@@ -2843,7 +2872,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                 # on black read as the two different pages they are.
                 for i, fam in enumerate((FAM_LEVEL, FAM_FX, FAM_NOTE)):
                     val, sat = th.ink.at(1.0 - i * 0.30)
-                    p.setBrush(QtGui.QColor.fromHsvF(FAM_HUE[fam] / 360.0, sat, val))
+                    p.setBrush(QtGui.QColor.fromHsvF(th.fam_hue[fam] / 360.0, sat, val))
                     p.drawRect(6, 5 + i * 9, n - 13 - i * 4, 6)
                 edge = th.chrome or th.ink
                 val, sat = edge.at(0.55)
