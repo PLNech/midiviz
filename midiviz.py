@@ -397,6 +397,9 @@ class Theme(NamedTuple):
     # Row D's faders, one hue per column (D1..D8), or () for "the row's family
     # hue like every other row". All eight up is the whole gradient at once.
     fader_hue: tuple[float, ...]
+    # How strongly the ParVagues wave (`w`) shows through. WAVE_ALPHA is the
+    # cockpit's "never compete with a digit"; a stage skin may want it louder.
+    wave_alpha: float
 
 
 # The dark ink ramp, sampled at levels 1..4, IS the dark surface ramp -- which
@@ -406,6 +409,7 @@ _INK_DARK = Ramp(0.055, 0.945, 1.25, 0.96, -0.50, 1.6)
 _TINT_T_DARK = tuple(lv / (LEVELS - 1) for lv in (1, 2, 3, 4))
 _TINT_T_LINEAR = (0.0, 1 / 3, 2 / 3, 1.0)
 
+WAVE_ALPHA = 0.12      # the wave's default strength; see the backdrops block
 THEMES: dict[str, Theme] = {
     "dark": Theme(
         name="dark", bg=BG,
@@ -416,7 +420,7 @@ THEMES: dict[str, Theme] = {
         scan=((0xa0, 0x60, 0xff, 16), (0xa0, 0x60, 0xff, 9)),
         bar_frac=0.22, bold=False, ui_font="mono",
         fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
-        word_hero=False, fader_hue=(),
+        word_hero=False, fader_hue=(), wave_alpha=WAVE_ALPHA,
     ),
     # Indoors on a pale desktop. Still a lens, still the violet arc, still a
     # decay gradient the eye can follow -- the ink simply runs the other way.
@@ -437,7 +441,7 @@ THEMES: dict[str, Theme] = {
         scan=((0x50, 0x3a, 0x78, 10), (0x50, 0x3a, 0x78, 6)),
         bar_frac=0.22, bold=False, ui_font="mono",
         fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
-        word_hero=False, fader_hue=(),
+        word_hero=False, fader_hue=(), wave_alpha=WAVE_ALPHA,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -481,6 +485,8 @@ THEMES: dict[str, Theme] = {
         # corail 16 deg walking DOWN the wheel to cyan 191, through rose,
         # magenta, violet and blue: the artwork's sweep, one step per orbit.
         fader_hue=tuple((16 - 185 * i / 7) % 360 for i in range(8)),
+        # PLN, 2026-09-28: "the wave is barely visible" on the black page.
+        wave_alpha=0.30,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -508,7 +514,7 @@ THEMES: dict[str, Theme] = {
         scan=None,
         bar_frac=0.34, bold=True, ui_font="mono",
         fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
-        word_hero=False, fader_hue=(),
+        word_hero=False, fader_hue=(), wave_alpha=WAVE_ALPHA,
     ),
 }
 # Cycle order for the `d` key and the menu: darkest to brightest page, so the
@@ -575,7 +581,8 @@ BASE_W, BASE_H = 420, 260
 # tree on the box at all.
 WAVE_PATH = (Path(os.environ["MIDIVIZ_WAVE"]) if os.environ.get("MIDIVIZ_WAVE")
              else Path(__file__).resolve().parent / "ui" / "parvagues_wave.png")
-WAVE_ALPHA = 0.12
+# (WAVE_ALPHA, the cockpit's wave strength, lives above THEMES; each theme
+# carries its own `wave_alpha`.)
 # …and its wordmark, over D1-D4 (PLN, 2026-09-24: "PARVAGUES in nice our
 # usual site font bloc letters over D1/2/3/4 alongside the wave same
 # brighter pink highlight"). The site's display face is Syne (next/font,
@@ -2082,7 +2089,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             scaled = pm.scaled(side, side,
                                Qt.AspectRatioMode.KeepAspectRatio,
                                Qt.TransformationMode.SmoothTransformation)
-            p.setOpacity(WAVE_ALPHA)
+            p.setOpacity(self.theme.wave_alpha)
             try:
                 # Bottom-right, over the finished reading: the digits live
                 # top-left, the brand lives where the eye rests. Under the
