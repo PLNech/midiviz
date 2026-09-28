@@ -386,6 +386,10 @@ class Theme(NamedTuple):
     # much of it -- a warm hue darkened toward black is brown, the same hue
     # thinned over navy stays itself (how the DevCon site layers its colour).
     tint_over_page: bool
+    # The texture's pitch, in base px: 0 = the CRT (fine lines, a vertical
+    # every fourth), anything else = a square grid at that pitch -- the
+    # DevCon artwork's graph paper.
+    scan_grid: float
 
 
 # The dark ink ramp, sampled at levels 1..4, IS the dark surface ramp -- which
@@ -404,7 +408,7 @@ THEMES: dict[str, Theme] = {
         spec_peak=(0xc8, 0xa8, 0xff, 90),
         scan=((0xa0, 0x60, 0xff, 16), (0xa0, 0x60, 0xff, 9)),
         bar_frac=0.22, bold=False, ui_font="mono",
-        fam_hue=FAM_HUE, tint_over_page=False,
+        fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
     ),
     # Indoors on a pale desktop. Still a lens, still the violet arc, still a
     # decay gradient the eye can follow -- the ink simply runs the other way.
@@ -424,7 +428,7 @@ THEMES: dict[str, Theme] = {
         spec_peak=(0x4a, 0x2a, 0x78, 110),
         scan=((0x50, 0x3a, 0x78, 10), (0x50, 0x3a, 0x78, 6)),
         bar_frac=0.22, bold=False, ui_font="mono",
-        fam_hue=FAM_HUE, tint_over_page=False,
+        fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -451,7 +455,8 @@ THEMES: dict[str, Theme] = {
         chrome_hue=216.0,      # #457aff, the site's electric blue
         spec=SpecRamp(0.058, -0.45, 0.85, 0.75, -0.30, 40, 140),
         spec_peak=(0x07, 0xff, 0xda, 160),   # the site's mint
-        scan=((0x00, 0x3d, 0xff, 14), (0x00, 0x3d, 0xff, 8)),
+        # Pale cyan #a2edf2 hairlines, the artwork's grid on its gradient.
+        scan=((0xa2, 0xed, 0xf2, 13), (0xa2, 0xed, 0xf2, 13)),
         # The site sets everything that is not body copy in Jersey 15, so
         # every digit here is too.
         bar_frac=0.34, bold=True, ui_font="jersey",
@@ -461,7 +466,7 @@ THEMES: dict[str, Theme] = {
         # #df96ef, gate = mint #07ffda, gate2 = cyan #46dbee, family = orange
         # #ff7700, other = the chrome's blue, note = the artwork's rose.
         fam_hue=(223, 16, 290, 171, 191, 28, 216, 350),
-        tint_over_page=True,
+        tint_over_page=True, scan_grid=14.0,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -488,7 +493,7 @@ THEMES: dict[str, Theme] = {
         spec_peak=(0x18, 0x0c, 0x38, 190),
         scan=None,
         bar_frac=0.34, bold=True, ui_font="mono",
-        fam_hue=FAM_HUE, tint_over_page=False,
+        fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
     ),
 }
 # Cycle order for the `d` key and the menu: darkest to brightest page, so the
@@ -1663,13 +1668,14 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             pm = QtGui.QPixmap(w, h)
             pm.fill(QtGui.QColor(0, 0, 0, 0))
             p = QtGui.QPainter(pm)
-            step = max(2, round(3 * self.dens))
+            grid = self.theme.scan_grid
+            step = max(2, round((grid or 3) * self.dens))
             hz, vt = self.theme.scan
             p.setPen(QtGui.QColor(*hz))
             for y in range(0, h, step):
                 p.drawLine(0, y, w, y)
             p.setPen(QtGui.QColor(*vt))
-            for x in range(0, w, step * 4):
+            for x in range(0, w, step if grid else step * 4):
                 p.drawLine(x, 0, x, h)
             p.end()
             self._scan = pm
