@@ -390,6 +390,10 @@ class Theme(NamedTuple):
     # every fourth), anything else = a square grid at that pitch -- the
     # DevCon artwork's graph paper.
     scan_grid: float
+    # The PARVAGUES wordmark (`l`) as the site's hero headline instead of the
+    # neon: Jersey 15, hero tracking, navy on a baked gradient plate. The
+    # theme decides, not --word-face, so no other page ever wears the plate.
+    word_plate: bool
 
 
 # The dark ink ramp, sampled at levels 1..4, IS the dark surface ramp -- which
@@ -409,6 +413,7 @@ THEMES: dict[str, Theme] = {
         scan=((0xa0, 0x60, 0xff, 16), (0xa0, 0x60, 0xff, 9)),
         bar_frac=0.22, bold=False, ui_font="mono",
         fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
+        word_plate=False,
     ),
     # Indoors on a pale desktop. Still a lens, still the violet arc, still a
     # decay gradient the eye can follow -- the ink simply runs the other way.
@@ -429,6 +434,7 @@ THEMES: dict[str, Theme] = {
         scan=((0x50, 0x3a, 0x78, 10), (0x50, 0x3a, 0x78, 6)),
         bar_frac=0.22, bold=False, ui_font="mono",
         fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
+        word_plate=False,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -466,7 +472,7 @@ THEMES: dict[str, Theme] = {
         # #df96ef, gate = mint #07ffda, gate2 = cyan #46dbee, family = orange
         # #ff7700, other = the chrome's blue, note = the artwork's rose.
         fam_hue=(223, 16, 290, 171, 191, 28, 216, 350),
-        tint_over_page=True, scan_grid=14.0,
+        tint_over_page=True, scan_grid=14.0, word_plate=True,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -494,6 +500,7 @@ THEMES: dict[str, Theme] = {
         scan=None,
         bar_frac=0.34, bold=True, ui_font="mono",
         fam_hue=FAM_HUE, tint_over_page=False, scan_grid=0.0,
+        word_plate=False,
     ),
 }
 # Cycle order for the `d` key and the menu: darkest to brightest page, so the
@@ -577,6 +584,14 @@ JERSEY_PATH = Path(__file__).resolve().parent / "ui" / "Jersey15-Regular.ttf"
 WORD_FACES = ("syne", "jersey")
 JERSEY_UI_SIZE = 1.3        # px multiplier when Jersey sets the digits
 WORD_ALPHA = 0.8
+# The DevCon hero, read off algolia.com/devcon (.devcon-hero__headline): Jersey
+# 15 at weight 400, letter-spacing -2.72px on 136px (-2%), --devcon-navy. The
+# plate is the artwork's own gradient (corail -> magenta -> cyan, measured on
+# the intro loop and the header) with its pale grid, because navy type needs
+# the bright page the site sets it on.
+PLATE_INK = "#14283f"
+PLATE_STOPS = ((0.0, "#fd956e"), (0.55, "#df96ef"), (1.0, "#46dbee"))
+PLATE_GRID = (0xff, 0xff, 0xff, 46)
 
 # ── the HL feed ────────────────────────────────────────────────────────────
 # PLN, 2026-09-24: "please do indeed sub from the events, to indeed feed
@@ -1860,18 +1875,20 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             spacing and kerned sub-advances disagreed, and that arithmetic is
             exactly how "PARVAGU" lost its tail. The bake measures its own
             ink instead (see _word_pixmap)."""
-            key = (self._word_face, round(target_w), round(target_h))
+            plate = self.theme.word_plate
+            face = "jersey" if plate else self._word_face
+            key = (face, plate, round(target_w), round(target_h))
             if self._word_font_key == key:
                 return self._word_font
-            fam_id = self._jersey_id if self._word_face == "jersey" \
-                else self._syne_id
+            fam_id = self._jersey_id if face == "jersey" else self._syne_id
             if fam_id < 0:
                 return None
             fam = QtGui.QFontDatabase.applicationFontFamilies(fam_id)[0]
             f = QtGui.QFont(fam)
             f.setPixelSize(max(6, target_h * 0.92))
             f.setLetterSpacing(QtGui.QFont.SpacingType.PercentageSpacing,
-                               106.0)               # +0.06em, as the hero tracks
+                               98.0 if plate      # -2%, the DevCon hero
+                               else 106.0)        # +0.06em, as the hero tracks
             self._word_font, self._word_font_key = f, key
             return f
 
@@ -1914,14 +1931,16 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             PARVAGU"), and it must FIT the D1 cell at the cell's margin —
             which means the TYPE shrinks to the width, honestly, rather than
             a squash that would make the letters strangers to themselves."""
-            key = (round(span_w), round(span_h))
+            plate = self.theme.word_plate
+            key = (round(span_w), round(span_h), plate)
             if self._word_pm_key == key:
                 return self._word_pm
             f = self._wave_font(span_w, span_h)
             if f is None:
                 return None
+            ink_col = QtGui.QColor(PLATE_INK if plate else "#d900ff")
 
-            def bake(px, canvas_w, glow=True):
+            def bake(px, canvas_w, glow=not plate):
                 fb = QtGui.QFont(f)
                 fb.setPixelSize(max(4, px))
                 fmb = QtGui.QFontMetricsF(fb)
@@ -1947,9 +1966,10 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                                 qp.translate(math.cos(a) * rad, math.sin(a) * rad)
                                 self._draw_word_layer(qp, base, pad_b, fmb, glow_pen)
                                 qp.restore()
-                    # the core: --neon-high itself, the site's own pink
+                    # the core: --neon-high itself, the site's own pink (or,
+                    # on the plate, the DevCon navy -- pure, no glow)
                     self._draw_word_layer(qp, base, pad_b, fmb,
-                                          QtGui.QPen(QtGui.QColor("#d900ff")))
+                                          QtGui.QPen(ink_col))
                 finally:
                     qp.end()
                 return img, pad_b
@@ -1989,7 +2009,34 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                                min(w_, right - left + 1 + pad),
                                img.height())
             pm = QtGui.QPixmap.fromImage(cropped)
+            if plate:
+                pm = self._plate_pixmap(span_w, span_h, pm)
             self._word_pm, self._word_pm_key = pm, key
+            return pm
+
+        def _plate_pixmap(self, span_w, span_h, word_pm):
+            """The DevCon hero as one baked picture: gradient, grid, word.
+            Built once per geometry like the word itself, so a frame is still
+            one blit and constructs no gradient."""
+            pw, ph = max(1, round(span_w)), max(1, round(span_h))
+            pm = QtGui.QPixmap(pw, ph)
+            pm.fill(QtGui.QColor(0, 0, 0, 0))
+            qp = QtGui.QPainter(pm)
+            try:
+                g = QtGui.QLinearGradient(0, 0, pw, ph)
+                for at, col in PLATE_STOPS:
+                    g.setColorAt(at, QtGui.QColor(col))
+                qp.fillRect(0, 0, pw, ph, QtGui.QBrush(g))
+                qp.setPen(QtGui.QColor(*PLATE_GRID))
+                step = max(4, round(ph / 5))
+                for x in range(step, pw, step):
+                    qp.drawLine(x, 0, x, ph)
+                for y in range(step, ph, step):
+                    qp.drawLine(0, y, pw, y)
+                qp.drawPixmap(round((pw - word_pm.width()) / 2.0),
+                              round((ph - word_pm.height()) / 2.0), word_pm)
+            finally:
+                qp.end()
             return pm
 
         def _col_has_ink(self, img, x):
@@ -2007,7 +2054,9 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             if pm is None:
                 return
             row_y = self.my + 3 * self.ch          # PHYSICAL_ORDER index of D
-            p.setOpacity(WORD_ALPHA)
+            # the plate is a sticker, opaque: idle marks bleeding through
+            # read as dirt on the gradient
+            p.setOpacity(1.0 if self.theme.word_plate else WORD_ALPHA)
             try:
                 # clamped to the span's outer rect: at the smallest windows
                 # the glow ring can reach 1px past the inner margin, and a
