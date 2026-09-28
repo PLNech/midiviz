@@ -535,11 +535,12 @@ WAVE_ALPHA = 0.12
 # recipe) and the pink is --neon-high. The variable font's latin subset is
 # vendored out of the built site for the same standalone reason as the wave.
 SYNE_PATH = Path(__file__).resolve().parent / "ui" / "syne-extrabold.ttf"
-# Jersey 25 (Soft Type Project, OFL, vendored from google/fonts) — the face of
-# the Algolia DevCon26 stage kit (live/algolia/devcon26). Same standalone
-# reason as Syne; `--word-face jersey` puts the wordmark in it, default stays
-# the brand's Syne.
-JERSEY_PATH = Path(__file__).resolve().parent / "ui" / "Jersey25-Regular.ttf"
+# Jersey 15 (Soft Type Project, OFL, vendored from google/fonts) — the face of
+# the Algolia DevCon26 stage kit, measured, not eyed: algolia.com/devcon's CSS
+# sets every headline in 'Jersey 15' (Jersey 25 was a guess, and wrong). Same
+# standalone reason as Syne; `--word-face jersey` puts the wordmark in it,
+# default stays the brand's Syne.
+JERSEY_PATH = Path(__file__).resolve().parent / "ui" / "Jersey15-Regular.ttf"
 WORD_FACES = ("syne", "jersey")
 WORD_ALPHA = 0.8
 
