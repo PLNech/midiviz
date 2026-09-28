@@ -374,6 +374,9 @@ class Theme(NamedTuple):
     scan: "tuple[tuple[int, int, int, int], tuple[int, int, int, int]] | None"
     bar_frac: float               # value-bar height as a fraction of the cell
     bold: bool                    # a heavier face, for a screen in daylight
+    # The face every digit and label is set in: "mono" (the cockpit's
+    # monospace stack) or "jersey" (the vendored pixel face, see JERSEY_PATH).
+    ui_font: str
 
 
 # The dark ink ramp, sampled at levels 1..4, IS the dark surface ramp -- which
@@ -391,7 +394,7 @@ THEMES: dict[str, Theme] = {
         spec=SpecRamp(0.68, -0.055, 0.80, 0.30, 0.70, 12, 84),
         spec_peak=(0xc8, 0xa8, 0xff, 90),
         scan=((0xa0, 0x60, 0xff, 16), (0xa0, 0x60, 0xff, 9)),
-        bar_frac=0.22, bold=False,
+        bar_frac=0.22, bold=False, ui_font="mono",
     ),
     # Indoors on a pale desktop. Still a lens, still the violet arc, still a
     # decay gradient the eye can follow -- the ink simply runs the other way.
@@ -410,7 +413,7 @@ THEMES: dict[str, Theme] = {
         spec=SpecRamp(0.62, -0.05, 0.55, 0.62, -0.28, 34, 120),
         spec_peak=(0x4a, 0x2a, 0x78, 110),
         scan=((0x50, 0x3a, 0x78, 10), (0x50, 0x3a, 0x78, 6)),
-        bar_frac=0.22, bold=False,
+        bar_frac=0.22, bold=False, ui_font="mono",
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -434,7 +437,9 @@ THEMES: dict[str, Theme] = {
         spec=SpecRamp(0.058, -0.45, 0.85, 0.75, -0.30, 40, 140),
         spec_peak=(0x07, 0xff, 0xda, 160),   # the site's mint
         scan=((0x00, 0x3d, 0xff, 14), (0x00, 0x3d, 0xff, 8)),
-        bar_frac=0.34, bold=True,
+        # The site sets everything that is not body copy in Jersey 15, so
+        # every digit here is too.
+        bar_frac=0.34, bold=True, ui_font="jersey",
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
     # at every decay level (a "dim" state outdoors is a blank state), thicker
@@ -460,7 +465,7 @@ THEMES: dict[str, Theme] = {
         spec=SpecRamp(0.60, -0.04, 0.72, 0.48, -0.26, 48, 150),
         spec_peak=(0x18, 0x0c, 0x38, 190),
         scan=None,
-        bar_frac=0.34, bold=True,
+        bar_frac=0.34, bold=True, ui_font="mono",
     ),
 }
 # Cycle order for the `d` key and the menu: darkest to brightest page, so the
@@ -542,6 +547,7 @@ SYNE_PATH = Path(__file__).resolve().parent / "ui" / "syne-extrabold.ttf"
 # default stays the brand's Syne.
 JERSEY_PATH = Path(__file__).resolve().parent / "ui" / "Jersey15-Regular.ttf"
 WORD_FACES = ("syne", "jersey")
+JERSEY_UI_SIZE = 1.3        # px multiplier when Jersey sets the digits
 WORD_ALPHA = 0.8
 
 # ── the HL feed ────────────────────────────────────────────────────────────
@@ -1293,7 +1299,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             self._ref_w = max(1, round(BASE_W * self.scale))
             self._ref_h = max(1, round(BASE_H * self.scale))
             self.dens = self.scale
-            self._metrics_key = None     # (main px, micro px, bold) last measured
+            self._metrics_key = None     # (main px, micro px, bold, face) last measured
             self.setMinimumSize(MIN_W, MIN_H)
             self.resize(self._ref_w, self._ref_h)
             # …then read it BACK off the widget. If a minimumSize ever clamped
@@ -1472,10 +1478,10 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             th = THEMES.get(name)
             if th is None or th is self.theme:
                 return
-            was_bold = self.theme.bold
+            was_face = (self.theme.bold, self.theme.ui_font)
             self.theme = th
             self._build_palette()
-            if th.bold != was_bold:
+            if (th.bold, th.ui_font) != was_face:
                 self._apply_scale()       # new weight, new metrics, new layout
             if getattr(self, "tray", None) is not None:
                 # The tray icon is painted from the palette, so it goes stale
@@ -1500,6 +1506,21 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                 save_config(self.theme.name, self.scale)
 
         def _font(self, px: int):
+            if self.theme.ui_font == "jersey" and self._jersey_id >= 0:
+                fams = QtGui.QFontDatabase.applicationFontFamilies(self._jersey_id)
+                if fams:
+                    f = QtGui.QFont(fams[0])
+                    # Jersey's caps stand shorter in their em than the mono's,
+                    # so the same pixel size reads a size smaller.
+                    f.setPixelSize(max(5, round(px * JERSEY_UI_SIZE)))
+                    # Tabular figures, so every digit shares one advance. A-F
+                    # still do not (see `_paint_stream`). And no bold: Jersey
+                    # ships a Regular only, and a synthesized bold smears the
+                    # pixel grid that is the whole point of the face.
+                    f.setFeature(QtGui.QFont.Tag("tnum"), 1)
+                    return f
+            # No Jersey on this checkout (id -1): the mono stack, silently,
+            # the same non-crash rule as the wordmark.
             f = QtGui.QFont()
             f.setFamilies(["Geist Mono", "JetBrains Mono", "Fira Code",
                            "DejaVu Sans Mono", "monospace"])
@@ -1541,7 +1562,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             """
             self.dens = d = self._density()
             px, upx = max(5, round(11 * d)), max(5, round(8 * d))
-            key = (px, upx, self.theme.bold)
+            key = (px, upx, self.theme.bold, self.theme.ui_font)
             if key != self._metrics_key:
                 # Re-measured only when the FACE actually changed. The weight
                 # belongs in that key because `set_theme` calls this precisely
@@ -1552,7 +1573,11 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                 self.f_micro = self._font(upx)
                 fm = QtGui.QFontMetricsF(self.f_main)
                 fmm = QtGui.QFontMetricsF(self.f_micro)
-                self.mw, self.mh = fm.horizontalAdvance("0"), fm.height()
+                # The WIDEST hex glyph is the ribbon's grid step; on a
+                # monospaced face they are all the same and this is "0".
+                self.mw = max(fm.horizontalAdvance(c) for c in HEX)
+                self.mh = fm.height()
+                self._hex_mono = len({fm.horizontalAdvance(c) for c in HEX}) == 1
                 self.uw, self.uh = fmm.horizontalAdvance("0"), fmm.height()
                 self.m_asc, self.u_asc = fm.ascent(), fmm.ascent()
             self._relayout()
@@ -2624,9 +2649,8 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
 
             One drawText per glyph was 2.1 ms of an 8.9 ms frame. Consecutive
             entries sharing a colour AND a decay level are concatenated into one
-            call — which is legitimate only for hex glyphs, because those are
-            guaranteed to come from the monospaced face at exactly `self.mw`
-            advance. A class glyph (◆ ≈ ≡ …) may be served by a fallback face
+            call — which is legitimate only for hex glyphs, and only on a
+            monospaced face, where they all advance exactly `self.mw`. A class glyph (◆ ≈ ≡ …) may be served by a fallback face
             with a different advance, so those still draw one at a time or the
             ribbon would drift out of its grid.
             """
@@ -2640,7 +2664,9 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             run_x, run_key = x, (0, 0)
             for g, fam, t in self.stream:
                 lv = self._lv(now - t, floor=2)
-                key = (fam, lv) if g in HEX else None
+                # Runs need every hex glyph at exactly `mw`; a proportional
+                # face (Jersey's A-F) gets one call per glyph instead.
+                key = (fam, lv) if g in HEX and self._hex_mono else None
                 if run and key == run_key:
                     run.append(g)
                 else:

@@ -1137,3 +1137,31 @@ def test_a_corner_press_really_arms_a_resize():
     # …and the type followed, without anybody calling _apply_scale by hand
     assert w.dens == w._density(), "the density did not follow the resize"
     w.mouseReleaseEvent(None)
+
+
+def test_every_theme_names_a_face_the_painter_knows():
+    """`_font` branches on `ui_font`; a typo there silently means the mono."""
+    import pytest
+    if not hasattr(V, "THEMES"):
+        pytest.skip("no themes in this tree")
+    for name, th in V.THEMES.items():
+        assert th.ui_font in ("mono", "jersey"), f"{name}.ui_font = {th.ui_font!r}"
+
+
+def test_devcon_sets_its_digits_in_jersey_and_the_ribbon_keeps_its_grid():
+    """Jersey is proportional (A-F), so the ribbon must stop concatenating
+    runs on it, and its grid step must be the widest hex glyph."""
+    import pytest
+    mv, w = _themed("devcon")
+    if mv is None:
+        pytest.skip("no Qt available")
+    if w._jersey_id < 0:
+        pytest.skip("Jersey not vendored on this checkout")
+    assert "Jersey" in w.f_main.family()
+    assert not w.f_main.bold(), "a synthesized bold smears the pixel face"
+    QtGui = mv._qt()[1]
+    fm = QtGui.QFontMetricsF(w.f_main)
+    assert w.mw == max(fm.horizontalAdvance(c) for c in mv.HEX)
+    assert w._hex_mono is False
+    w.set_theme("dark", save=False)
+    assert "Jersey" not in w.f_main.family() and w._hex_mono is True
