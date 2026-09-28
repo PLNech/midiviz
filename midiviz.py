@@ -417,25 +417,23 @@ THEMES: dict[str, Theme] = {
     # value bars, and no scanline texture to eat the little contrast there is.
     # It is not meant to be pretty; it is meant to be the one that still works
     # when the laptop is the brightest thing on a table at noon.
-    # The DevCon26 stage skin (PLN, 2026-09-28): the event's own palette,
-    # extracted from the intro loop itself (live/algolia/devcon26/assets) --
-    # corail #fe9d6a in mass, magenta #e69beb, cyan #25d2f4, everything at
-    # high value on a warm near-white page, navy type. A stage screen wants
-    # the `sun` recipe (bold, thick bars, no scanline haze) wearing the
-    # event's colours; the family hues stay the orbit identity, the DevCon
-    # gradient lives in the spec wash.
+    # The DevCon26 stage skin, v2 (PLN, 2026-09-28: "not white theme"): the
+    # event's OWN tokens, pulled from algolia.com/devcon's CSS -- navy page
+    # #0d1833, electric blue #003dff / #457aff, orange #ff7700, mint
+    # #07ffda (gradient #adf6ff->#46dbee->#07ffda). The artwork's corail
+    # (measured #fd956e, 47% of the intro loop) walks the spec wash: one
+    # linear hue drift, corail 21 deg down through magenta 296 to cyan --
+    # wrapped, see _build_palette. Family hues stay the orbit identity.
     "devcon": Theme(
-        name="devcon", bg=(0xf8, 0xf5, 0xf0),
-        ink=Ramp(0.66, -0.40, 0.70, 0.55, 0.45, 0.80),
-        tint=Ramp(0.90, -0.14, 1.00, 0.16, 0.36, 1.00),
+        name="devcon", bg=(0x0d, 0x18, 0x33),
+        ink=Ramp(0.10, 0.88, 1.25, 0.92, -0.40, 1.60),
+        tint=Ramp(0.16, 0.55, 1.00, 0.30, 0.45, 1.00),
         tint_t=_TINT_T_LINEAR,
-        chrome=Ramp(0.66, -0.50, 0.80, 0.10, 0.34, 1.00),
-        chrome_hue=222.0,      # the navy of the DevCon display face
-        # The wash walks the intro's gradient in one linear drift: corail
-        # 21 deg down through magenta 296 to cyan ~200 -- measured, not eyed.
-        spec=SpecRamp(0.058, -0.45, 0.85, 0.72, -0.32, 40, 140),
-        spec_peak=(0x18, 0x28, 0xa0, 150),
-        scan=None,
+        chrome=Ramp(0.70, -0.40, 0.80, 0.25, 0.30, 1.00),
+        chrome_hue=216.0,      # #457aff, the site's electric blue
+        spec=SpecRamp(0.058, -0.45, 0.85, 0.75, -0.30, 40, 140),
+        spec_peak=(0x07, 0xff, 0xda, 160),   # the site's mint
+        scan=((0x00, 0x3d, 0xff, 14), (0x00, 0x3d, 0xff, 8)),
         bar_frac=0.34, bold=True,
     ),
     # Direct sunlight, and built for nothing else. Near-white page, heavy ink
