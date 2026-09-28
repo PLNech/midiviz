@@ -417,6 +417,32 @@ THEMES: dict[str, Theme] = {
     # value bars, and no scanline texture to eat the little contrast there is.
     # It is not meant to be pretty; it is meant to be the one that still works
     # when the laptop is the brightest thing on a table at noon.
+    # The DevCon26 stage skin (PLN, 2026-09-28): the event's own palette,
+    # extracted from the intro loop itself (live/algolia/devcon26/assets) --
+    # corail #fe9d6a in mass, magenta #e69beb, cyan #25d2f4, everything at
+    # high value on a warm near-white page, navy type. A stage screen wants
+    # the `sun` recipe (bold, thick bars, no scanline haze) wearing the
+    # event's colours; the family hues stay the orbit identity, the DevCon
+    # gradient lives in the spec wash.
+    "devcon": Theme(
+        name="devcon", bg=(0xf8, 0xf5, 0xf0),
+        ink=Ramp(0.66, -0.40, 0.70, 0.55, 0.45, 0.80),
+        tint=Ramp(0.90, -0.14, 1.00, 0.16, 0.36, 1.00),
+        tint_t=_TINT_T_LINEAR,
+        chrome=Ramp(0.66, -0.50, 0.80, 0.10, 0.34, 1.00),
+        chrome_hue=222.0,      # the navy of the DevCon display face
+        # The wash walks the intro's gradient in one linear drift: corail
+        # 21 deg down through magenta 296 to cyan ~200 -- measured, not eyed.
+        spec=SpecRamp(0.058, -0.45, 0.85, 0.72, -0.32, 40, 140),
+        spec_peak=(0x18, 0x28, 0xa0, 150),
+        scan=None,
+        bar_frac=0.34, bold=True,
+    ),
+    # Direct sunlight, and built for nothing else. Near-white page, heavy ink
+    # at every decay level (a "dim" state outdoors is a blank state), thicker
+    # value bars, and no scanline texture to eat the little contrast there is.
+    # It is not meant to be pretty; it is meant to be the one that still works
+    # when the laptop is the brightest thing on a table at noon.
     "sun": Theme(
         name="sun", bg=(0xfc, 0xfc, 0xfa),
         # Ink is near-black at EVERY decay level (`vg` below 1 spends the whole
@@ -441,7 +467,7 @@ THEMES: dict[str, Theme] = {
 }
 # Cycle order for the `d` key and the menu: darkest to brightest page, so the
 # key has a direction and "one more press" means "one step sunnier".
-THEME_ORDER: tuple[str, ...] = ("dark", "light", "sun")
+THEME_ORDER: tuple[str, ...] = ("dark", "light", "devcon", "sun")
 DEFAULT_THEME = "dark"
 # What each page is FOR, for the menu only. `dark`/`light`/`sun` stay the
 # vocabulary of the config file, the `--theme` flag and every test; a menu row
@@ -450,6 +476,7 @@ THEME_MENU: dict[str, str] = {
     "dark": "Dark  ·  the cockpit, indoors",
     "light": "Light  ·  a pale desktop",
     "sun": "Sun  ·  daylight, maximum ink",
+    "devcon": "DevCon  ·  the Algolia stage skin",
 }
 
 TAU = 0.85                          # seconds; brightness e-folding time
@@ -510,6 +537,12 @@ WAVE_ALPHA = 0.12
 # recipe) and the pink is --neon-high. The variable font's latin subset is
 # vendored out of the built site for the same standalone reason as the wave.
 SYNE_PATH = Path(__file__).resolve().parent / "ui" / "syne-extrabold.ttf"
+# Jersey 25 (Soft Type Project, OFL, vendored from google/fonts) — the face of
+# the Algolia DevCon26 stage kit (live/algolia/devcon26). Same standalone
+# reason as Syne; `--word-face jersey` puts the wordmark in it, default stays
+# the brand's Syne.
+JERSEY_PATH = Path(__file__).resolve().parent / "ui" / "Jersey25-Regular.ttf"
+WORD_FACES = ("syne", "jersey")
 WORD_ALPHA = 0.8
 
 # ── the HL feed ────────────────────────────────────────────────────────────
@@ -1139,7 +1172,8 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                  pinned_port: str | None = None, watch: bool = False,
                  spectro: bool = False, theme: str = DEFAULT_THEME,
                  persist: bool = False, tray: bool = False,
-                 hl: "oscfeed.HLFeed | None" = None):
+                 hl: "oscfeed.HLFeed | None" = None,
+                 word_face: str = "syne"):
     QtCore, QtGui, QtWidgets = _qt()
     Qt = QtCore.Qt
 
@@ -1226,6 +1260,14 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                     str(SYNE_PATH))
             except Exception:
                 self._syne_id = -1
+            # Same deal, same non-crash rule: a checkout without Jersey loses
+            # only the alternate wordmark face, never the lens.
+            try:
+                self._jersey_id = QtGui.QFontDatabase.addApplicationFont(
+                    str(JERSEY_PATH))
+            except Exception:
+                self._jersey_id = -1
+            self._word_face = word_face if word_face in WORD_FACES else "syne"
             self._word_font = None
             self._word_font_key = None
             self._word_pm = None
@@ -1409,7 +1451,11 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             # else, so a spectrum frame constructs no QColor.
             sp = th.spec
             self.spec_lut = [
-                QtGui.QColor.fromHsvF(sp.h0 + sp.hspan * (lv / (SPEC_LEVELS - 1)),
+                # The hue drift wraps (`% 1.0`): a theme may walk the wheel
+                # through 0 — DevCon26's does, corail 21 deg descending to
+                # cyan past magenta — and fromHsvF rejects a negative hue.
+                # Identity on every theme that never crosses zero.
+                QtGui.QColor.fromHsvF((sp.h0 + sp.hspan * (lv / (SPEC_LEVELS - 1))) % 1.0,
                                       sp.sat, sp.v0 + sp.vspan * (lv / (SPEC_LEVELS - 1)),
                                       (sp.a0 + sp.aspan * (lv / (SPEC_LEVELS - 1))) / 255.0)
                 for lv in range(SPEC_LEVELS)
@@ -1755,10 +1801,11 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             spacing and kerned sub-advances disagreed, and that arithmetic is
             exactly how "PARVAGU" lost its tail. The bake measures its own
             ink instead (see _word_pixmap)."""
-            key = (round(target_w), round(target_h))
+            key = (self._word_face, round(target_w), round(target_h))
             if self._word_font_key == key:
                 return self._word_font
-            fam_id = self._syne_id
+            fam_id = self._jersey_id if self._word_face == "jersey" \
+                else self._syne_id
             if fam_id < 0:
                 return None
             fam = QtGui.QFontDatabase.applicationFontFamilies(fam_id)[0]
@@ -3657,6 +3704,9 @@ def main(argv=None) -> int:
                     help="theme: dark (the cockpit), light (pale desktop), "
                          "sun (maximum contrast, for playing outdoors); "
                          "'d' cycles at runtime and the choice is remembered")
+    ap.add_argument("--word-face", choices=WORD_FACES, default="syne",
+                    help="face of the PARVAGUES wordmark; jersey is the "
+                         "DevCon26 stage face")
     ap.add_argument("--no-tray", action="store_true",
                     help="skip the system-tray presence even where one exists")
     ap.add_argument("--spectro", action="store_true",
@@ -3758,7 +3808,8 @@ def main(argv=None) -> int:
     app.setQuitOnLastWindowClosed(False)
     w = build_widget(port or "--", reader, scale=scale,
                      pinned_port=pinned, watch=True, theme=theme,
-                     persist=True, tray=not a.no_tray, hl=hl)
+                     persist=True, tray=not a.no_tray, hl=hl,
+                     word_face=a.word_face)
     if a.spectro:
         src = None
         if a.spectro_target:
