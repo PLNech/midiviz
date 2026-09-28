@@ -1197,3 +1197,23 @@ def test_pw_record_gets_raw_only_when_it_knows_the_flag(monkeypatch):
         raise OSError("no pw-record")
     monkeypatch.setattr(subprocess, "run", boom)
     assert V.pw_record_raw_flag() == []
+
+
+def test_the_spectro_tap_finds_ardours_master_and_nothing_else(monkeypatch):
+    """Ardour is one PipeWire node with every port; only Master out may match."""
+    import subprocess
+    import types
+    listing = "\n".join((
+        "ardour:Master/audio_out 1", "ardour:Master/audio_out 2",
+        "ardour:Click/audio_out 1", "ardour:d1/audio_out 1",
+        "ardour:SC Master/ACE Compressor (stereo) 4/audio_in 1",
+        "alsa_output.pci:monitor_FL", "Ardour-8:Master/audio_out 1"))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k:
+                        types.SimpleNamespace(stdout=listing, stderr="", returncode=0))
+    assert V.ardour_master_ports() == ["Ardour-8:Master/audio_out 1",
+                                       "ardour:Master/audio_out 1",
+                                       "ardour:Master/audio_out 2"]
+    def boom(*a, **k):
+        raise OSError("no pw-link")
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert V.ardour_master_ports() == [], "no PipeWire = fall back, never raise"

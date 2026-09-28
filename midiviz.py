@@ -1008,11 +1008,19 @@ def _latch_close():
 #     wants to *measure* something, `tidal-ears` is the tool and it is the
 #     right one.
 #
-# The tap is the DEFAULT SINK's monitor, re-resolved on every (re)launch
-# rather than captured once -- the same "never trust a resolved binding past
-# the moment it might have gone stale" rule as the MIDI port above. The sink
-# is what the audience hears after Ardour's master, which is the whole point:
-# it is the mix, not one orbit. `pw-record`'s default 100 ms latency is asked
+# The tap is ARDOUR'S MASTER OUT itself when Ardour is up (PLN, 2026-09-28:
+# "should load proper from whatever Master in Ardour is connected to"): the
+# mix after the master chain, and nothing else. The default sink's monitor was
+# the old tap and it lied twice -- it also carries whatever else the laptop
+# plays (a radio panel, a browser), and Master feeds TWO sinks on the XPS24,
+# one of which also gets the Click. Ardour is ONE PipeWire node holding every
+# port, orbits included, so `--target ardour` would grab the wrong channels:
+# pw-record starts unlinked under its own name and we link exactly
+# `Master/audio_out 1+2` into its mono input. No Ardour -> the default sink's
+# monitor, as before. Either way re-resolved on every (re)launch, and a
+# watchdog relaunches when Ardour comes, goes or restarts -- the same "never
+# trust a resolved binding past the moment it might have gone stale" rule as
+# the MIDI port above. `pw-record`'s default 100 ms latency is asked
 # for EXPLICITLY here: a monitor client requesting a tight buffer is how you
 # talk the graph's quantum down and buy xruns for a decoration.
 SPEC_BANDS = 40                     # log-spaced bars across the full width
@@ -1024,6 +1032,8 @@ SPEC_DB_FLOOR, SPEC_DB_CEIL = -80.0, -6.0
 SPEC_ATTACK, SPEC_RELEASE = 0.60, 0.12   # rise fast, fall slow
 SPEC_RELAUNCH_S = 2.0               # backoff after the capture ends unasked
 SPEC_LEVELS = 20                    # colour LUT depth for the wash
+SPEC_WATCH_S = 5.0                  # how often the tap re-checks Ardour
+_ARDOUR_MASTER = re.compile(r"^(?i:ardour)[^:]*:Master/audio_out \d+$")
 
 
 def _spec_band_edges(bands: int, fft_n: int, rate: int):
@@ -1095,6 +1105,18 @@ def pw_record_raw_flag() -> list[str]:
     return ["--raw"] if _PW_RAW else []
 
 
+def ardour_master_ports() -> list[str]:
+    """Ardour's Master output ports as PipeWire names them, sorted; [] when
+    Ardour (or pw-link) is not there."""
+    try:
+        out = subprocess.run(["pw-link", "-o"], capture_output=True, text=True,
+                             timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return sorted(ln.strip() for ln in (out.stdout or "").splitlines()
+                  if _ARDOUR_MASTER.match(ln.strip()))
+
+
 def spec_default_target() -> str | None:
     """The default sink's node name, or None if PulseAudio/PipeWire is absent."""
     try:
@@ -1107,7 +1129,8 @@ def spec_default_target() -> str | None:
 
 
 class SpectrumSource:
-    """`pw-record` on the default sink's monitor → one coarse band frame.
+    """`pw-record` on Ardour's Master (or the default sink's monitor) → one
+    coarse band frame.
 
     `push()` is the seam: it is the whole analysis path and it does not care
     where its samples came from, so `--selftest` drives the real FFT and the
@@ -1138,6 +1161,8 @@ class SpectrumSource:
         self._stop = threading.Event()
         self._th: threading.Thread | None = None
         self._proc = None
+        self.source = ""                # "ardour" / "sink": what the tap is on
+        self._node = "midiviz-spectro-%d" % os.getpid()
 
     # ── analysis (thread-agnostic; the tested half) ────────────────────────
     def push(self, block) -> tuple[float, ...]:
@@ -1180,6 +1205,42 @@ class SpectrumSource:
                 "--channels", "1", "--format", "f32", "--latency", "100ms",
                 *pw_record_raw_flag(), "-"]
 
+    def _cmd_unlinked(self) -> list[str]:
+        """pw-record under our own node name, linked to nothing: the ports
+        are linked by hand (see `_link`)."""
+        return ["pw-record", "--target", "0",
+                "-P", "{ node.name = %s, node.autoconnect = false }" % self._node,
+                "--rate", str(self.rate), "--channels", "1", "--format", "f32",
+                "--latency", "100ms", *pw_record_raw_flag(), "-"]
+
+    def _link(self, ports: list[str]) -> None:
+        """Master out -> our mono input. Re-running it is harmless (pw-link
+        refuses an existing link), which is what lets the watchdog heal."""
+        dst = "%s:input_MONO" % self._node
+        for _ in range(20):                 # the input port appears async
+            ok = False
+            for src in ports:
+                try:
+                    r = subprocess.run(["pw-link", src, dst], capture_output=True,
+                                       text=True, timeout=3)
+                except (OSError, subprocess.SubprocessError):
+                    return
+                ok = ok or r.returncode == 0 or "exists" in (r.stderr or "")
+            if ok or self._stop.wait(0.05):
+                return
+
+    def _watch(self, proc, ports: list[str]) -> None:
+        """While `proc` lives: Ardour appeared, vanished or changed its
+        Master -> kill it and let `_run` re-resolve; else re-assert the links
+        (an Ardour restart drops them without ending our stream)."""
+        while self._proc is proc and not self._stop.wait(SPEC_WATCH_S):
+            now = ardour_master_ports()
+            if now != ports:
+                self._kill()
+                return
+            if ports:
+                self._link(ports)
+
     def start(self) -> "SpectrumSource":
         if self._th is None:
             self._th = threading.Thread(target=self._run, name="spectro",
@@ -1190,20 +1251,31 @@ class SpectrumSource:
     def _run(self) -> None:
         need = self.hop * 4                      # float32 mono
         while not self._stop.is_set():
-            target = self.target or spec_default_target()
-            if not target:
+            # An explicit target (tests, a pinned sink) wins; else Ardour's
+            # Master when it is up, else the default sink's monitor.
+            ports = [] if self.target else ardour_master_ports()
+            target = self.target or (None if ports else spec_default_target())
+            if not ports and not target:
                 self.err = "no sink"
                 if self._stop.wait(SPEC_RELAUNCH_S):
                     return
                 continue
             try:
-                self._proc = subprocess.Popen(self._cmd(target),
-                                              stdout=subprocess.PIPE,
-                                              stderr=subprocess.DEVNULL,
-                                              bufsize=0)
+                self._proc = subprocess.Popen(
+                    self._cmd_unlinked() if ports else self._cmd(target),
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
             except OSError as exc:               # no pw-record on this box
                 self.err = type(exc).__name__
                 return
+            self.source = "ardour" if ports else "sink"
+            if ports:
+                self._link(ports)
+            if not self.target:
+                threading.Thread(target=self._watch, args=(self._proc, ports),
+                                 name="spectro-watch", daemon=True).start()
+            # L and R summed into one mono input is twice the level a
+            # monitor's downmix gives; scale back so the dB range still fits.
+            gain = 1.0 / len(ports) if len(ports) > 1 else 1.0
             try:
                 out = self._proc.stdout
                 while not self._stop.is_set():
@@ -1213,7 +1285,8 @@ class SpectrumSource:
                         break
                     self.blocks += 1
                     self.err = ""
-                    self.push(self._np.frombuffer(raw, dtype="<f4"))
+                    blk = self._np.frombuffer(raw, dtype="<f4")
+                    self.push(blk * gain if gain != 1.0 else blk)
             except (OSError, ValueError) as exc:
                 self.err = type(exc).__name__
             finally:
