@@ -1167,17 +1167,17 @@ def test_devcon_sets_its_digits_in_jersey_and_the_ribbon_keeps_its_grid():
     assert "Jersey" not in w.f_main.family() and w._hex_mono is True
 
 
-def test_only_devcon_wears_the_hero_plate_and_it_fills_its_span():
+def test_only_devcon_wears_the_hero_and_its_faders_walk_the_gradient():
     import pytest
     mv, w = _themed("devcon")
     if mv is None:
         pytest.skip("no Qt available")
-    assert [n for n, th in mv.THEMES.items() if th.word_plate] == ["devcon"]
-    if w._jersey_id < 0:
-        pytest.skip("Jersey not vendored on this checkout")
-    pm = w._word_pixmap(300.0, 60.0)
-    assert (pm.width(), pm.height()) == (300, 60), "the plate is the span, exactly"
-    # a theme switch must not reuse the plate as the neon word
+    assert [n for n, th in mv.THEMES.items() if th.word_hero] == ["devcon"]
+    assert [n for n, th in mv.THEMES.items() if th.fader_hue] == ["devcon"]
+    # eight faders, eight different hottest inks: all up is the whole sweep
+    assert len(w.fader_lut) == 8 and len(w.fader_tint) == 8
+    assert len({lut[15].rgba() for lut in w.fader_lut}) == 8
+    for lut in w.fader_lut:
+        assert len(lut) == mv.LEVELS
     w.set_theme("dark", save=False)
-    neon = w._word_pixmap(300.0, 60.0)
-    assert neon is not pm
+    assert w.fader_lut == [], "a theme switch must drop the gradient faders"
