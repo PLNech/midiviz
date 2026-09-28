@@ -592,6 +592,10 @@ WORD_ALPHA = 0.8
 PLATE_INK = "#14283f"
 PLATE_STOPS = ((0.0, "#fd956e"), (0.55, "#df96ef"), (1.0, "#46dbee"))
 PLATE_GRID = (0xff, 0xff, 0xff, 46)
+# Only the gradient is translucent; the letters stay solid. PLN, 2026-09-28:
+# "ensure that we still see the D1-3 under the lettering" -- those three cells
+# are wired controls, and a sticker that hid them would read as unwired.
+PLATE_ALPHA = 0.5
 
 # ── the HL feed ────────────────────────────────────────────────────────────
 # PLN, 2026-09-24: "please do indeed sub from the events, to indeed feed
@@ -2026,6 +2030,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                 g = QtGui.QLinearGradient(0, 0, pw, ph)
                 for at, col in PLATE_STOPS:
                     g.setColorAt(at, QtGui.QColor(col))
+                qp.setOpacity(PLATE_ALPHA)
                 qp.fillRect(0, 0, pw, ph, QtGui.QBrush(g))
                 qp.setPen(QtGui.QColor(*PLATE_GRID))
                 step = max(4, round(ph / 5))
@@ -2033,6 +2038,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
                     qp.drawLine(x, 0, x, ph)
                 for y in range(step, ph, step):
                     qp.drawLine(0, y, pw, y)
+                qp.setOpacity(1.0)
                 qp.drawPixmap(round((pw - word_pm.width()) / 2.0),
                               round((ph - word_pm.height()) / 2.0), word_pm)
             finally:
@@ -2054,8 +2060,7 @@ def build_widget(port_label: str, reader: "Reader | None", scale: float = 1.0,
             if pm is None:
                 return
             row_y = self.my + 3 * self.ch          # PHYSICAL_ORDER index of D
-            # the plate is a sticker, opaque: idle marks bleeding through
-            # read as dirt on the gradient
+            # the plate carries its own alpha (see PLATE_ALPHA)
             p.setOpacity(1.0 if self.theme.word_plate else WORD_ALPHA)
             try:
                 # clamped to the span's outer rect: at the smallest windows
